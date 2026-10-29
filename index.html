@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mill Creek Daylight</title>
+<meta name="description" content="Edmonton's Mill Creek in 1967 and today: a then-and-now map of the lost lower creek, by Matt Dance.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: one reading column, with the then-and-now map breaking wider than the text.
+   Colours come from the 1967 sheet: drafting ink, and a creek blue for water. */
+:root {
+  --bg: #f3f1ec;
+  --panel: #e9e5dc;
+  --rule: #d6d1c5;
+  --fg: #1d2830;
+  --muted: #5b6871;
+  --creek: #1b6ed6;
+  /* lines drawn on the map sit on the same light basemap in both themes */
+  --map-then: #3d6488;
+  --map-creek: #1b6ed6;
+  --map-lrt: #e8590c;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171c; --panel: #182128; --rule: #2a353e; --fg: #e5eaee; --muted: #9aa7b0;
+    --creek: #5aa2ff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171c; --panel: #182128; --rule: #2a353e; --fg: #e5eaee; --muted: #9aa7b0;
+  --creek: #5aa2ff; color-scheme: dark;
+}
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 18px;
+  line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 56px;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; }
+a { color: var(--fg); text-decoration-color: var(--muted); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--creek); }
+:focus-visible { outline: 2px solid var(--creek); outline-offset: 3px; }
+
+.wrap { max-width: 1120px; margin: 0 auto; }
+.col { max-width: 660px; }
+p { margin: 0; }
+.eyebrow {
+  font-family: var(--display); font-weight: 600; font-size: 15px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0;
+}
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.02; text-wrap: balance; margin: 0; text-transform: uppercase; }
+h1 { font-size: clamp(48px, 9vw, 100px); letter-spacing: -.005em; }
+h1 .yr { color: var(--creek); font-weight: 500; }
+h2 { font-size: clamp(30px, 4.6vw, 42px); }
+h3 { font-size: 24px; }
+.lede { font-size: 21px; line-height: 1.55; }
+
+header.hero { padding-block: 52px 28px; display: grid; gap: 18px; }
+
+section { padding-block: 32px 8px; display: grid; gap: 16px; }
+.col > * + * { margin-top: 14px; }
+
+/* map */
+.mapbox { position: relative; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; background: var(--panel); }
+#map { width: 100%; height: min(78vh, 820px); min-height: 440px; background: var(--panel); }
+.leaflet-container { font-family: var(--mono); }
+.leaflet-control-attribution { font-size: 11px; }
+.swipe-line {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px;
+  background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 900; pointer-events: none;
+}
+.swipe-knob {
+  position: absolute; top: 50%; left: 50%; width: 46px; height: 46px; transform: translate(-50%, -50%);
+  border-radius: 50%; background: #fff; color: #1d2830; border: 0; z-index: 901;
+  display: grid; place-items: center; cursor: ew-resize; touch-action: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,.35);
+}
+.swipe-knob svg { width: 22px; height: 22px; }
+.yr-tag {
+  position: absolute; top: 12px; z-index: 902; pointer-events: none;
+  font: 700 18px/1 var(--display); letter-spacing: .06em; text-transform: uppercase;
+  padding: 6px 9px 5px; border-radius: 2px; background: rgba(17, 23, 28, .78); color: #fff;
+}
+.yr-tag.l { left: 12px; }
+.yr-tag.r { right: 12px; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.chip {
+  font: 500 14px/1 var(--mono); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 999px; padding: 9px 14px 9px 10px;
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.chip i { width: 20px; height: 0; border-top: 3px solid currentColor; display: block; }
+.chip[aria-pressed="false"] { color: var(--muted); }
+.chip[aria-pressed="false"] i { opacity: .35; }
+.chip.k-then i { border-top: 3px dashed var(--map-then); }
+.chip.k-today i { border-top-color: var(--map-creek); }
+.chip.k-lrt i { border-top-color: var(--map-lrt); }
+.caption { font-size: 15px; line-height: 1.5; color: var(--muted); max-width: 660px; }
+
+/* stops */
+.stops { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.stop { display: grid; gap: 8px; align-content: start; padding: 18px 20px 4px 0; }
+.stop + .stop { padding-left: 20px; border-left: 1px solid var(--rule); }
+.stop .eyebrow { color: var(--creek); }
+.stop p { font-size: 16px; line-height: 1.5; }
+.go {
+  justify-self: start; margin-top: 4px;
+  font: 500 13px/1 var(--mono); color: var(--fg); background: none;
+  border: 1px solid var(--rule); border-radius: 3px; padding: 8px 12px; cursor: pointer;
+}
+.go:hover { border-color: var(--creek); }
+@media (max-width: 820px) {
+  .stops { grid-template-columns: minmax(0, 1fr); }
+  .stop + .stop { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
+}
+
+/* timeline */
+ol.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; max-width: 760px; }
+ol.timeline li { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 20px; padding: 14px 0; border-top: 1px solid var(--rule); }
+ol.timeline time { font: 600 22px/1.15 var(--display); letter-spacing: .02em; color: var(--creek); font-variant-numeric: tabular-nums; }
+ol.timeline p { font-size: 17px; line-height: 1.55; }
+@media (max-width: 560px) { ol.timeline li { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+
+.sources { font-size: 15px; line-height: 1.55; color: var(--muted); }
+.sources ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--rule); font: 400 13px/1.5 var(--mono); color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Mill Creek Ravine · Edmonton</p>
+    <h1>Mill Creek, <span class="yr">1967</span> and now</h1>
+    <div class="col">
+      <p class="lede">Mill Creek used to run all the way down its ravine to the North Saskatchewan. In 1970 its last stretch, from Connors Road to the river, was diverted to make room for roads. Drag the slider to see where it went.</p>
+    </div>
+  </header>
+
+  <section aria-label="Then and now map">
+    <div class="mapbox">
+      <div id="map" role="region" aria-label="Map comparing a 1967 street map of Mill Creek with today's map"></div>
+      <span class="yr-tag l">1967</span><span class="yr-tag r">Today</span>
+      <div class="swipe-line" id="swipe-line"></div>
+      <button class="swipe-knob" id="swipe-knob" role="slider" aria-label="Compare 1967 and today" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="controls" role="group" aria-label="Lines on the map">
+      <button class="chip k-then" id="t-then" data-k="then" aria-pressed="true"><i></i>The creek in 1967</button>
+      <button class="chip k-today" id="t-today" data-k="today" aria-pressed="true"><i></i>The creek today</button>
+      <button class="chip k-lrt" id="t-lrt" data-k="lrt" aria-pressed="true"><i></i>Valley Line LRT, 2015 plan</button>
+    </div>
+    <p class="caption">Left of the slider is a 1967 city street map; right of it is today's map. The dashed line traces the creek as the 1967 map drew it. The solid blue is the creek in Alberta's base mapping today, and the gap in it is the part that went underground. The orange line is the LRT route as planned in 2015; the line as built shows in grey on today's map. Use two fingers or the + and − buttons to zoom.</p>
+  </section>
+
+  <section aria-labelledby="look-h">
+    <h2 id="look-h">Three places to look</h2>
+    <div class="stops">
+      <div class="stop">
+        <p class="eyebrow">The mouth</p>
+        <h3>Where it met the river</h3>
+        <p>In 1967 the creek looped past 98 Avenue and out to the North Saskatchewan. Today about 150 m of channel near the river still carries water, cut off from the rest.</p>
+        <button class="go" data-go="mouth">Show me</button>
+      </div>
+      <div class="stop">
+        <p class="eyebrow">The gap</p>
+        <h3>Where it goes under</h3>
+        <p>Just south of Connors Road the creek disappears. Follow the dashed line north: about 900 m of the old channel has no creek in it now.</p>
+        <button class="go" data-go="gap">Show me</button>
+      </div>
+      <div class="stop">
+        <p class="eyebrow">The tracks</p>
+        <h3>The LRT on the creek bed</h3>
+        <p>Between Connors Road and 98 Avenue the Valley Line runs right over the old channel. This map was first made in 2015 to show how close the planned route came to the lost creek. The line opened in 2023.</p>
+        <button class="go" data-go="lrt">Show me</button>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="time-h">
+    <h2 id="time-h">How it got here</h2>
+    <ol class="timeline">
+      <li><time>1878</time><p>William Bird, a Hudson's Bay Company employee, opens a flour mill near where the creek enters the river. The creek is named for it.</p></li>
+      <li><time>1960s–70s</time><p>Neighbours and naturalists fight off a plan to run a freeway through the ravine. The ravine survives; the creek's lower end does not.</p></li>
+      <li><time>1970</time><p>The last stretch of the creek, through the ravine under Connors Road and 98 Avenue to the river, is diverted and put underground.</p></li>
+      <li><time>March 2015</time><p>As the Valley Line LRT is designed through the bottom of the ravine, people push for it to leave room to bring the creek back. This map is first made.</p></li>
+      <li><time>2015 on</time><p>The City studies daylighting the lower creek, bringing it back to the surface.</p></li>
+      <li><time>Nov. 2023</time><p>The Valley Line Southeast opens, with the Muttart stop beside the old creek bed.</p></li>
+      <li><time>Aug. 2025</time><p>A council committee recommends replacing the 76 Avenue culvert, upstream of this map, with a bridge, letting that stretch of creek run in the open.</p></li>
+    </ol>
+  </section>
+
+  <section class="sources" aria-labelledby="src-h">
+    <h3 id="src-h">Sources and credits</h3>
+    <ol>
+      <li>1967 map: a scanned 1967 Edmonton street map, georeferenced by Matt Dance in 2015.</li>
+      <li>Today's map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.</li>
+      <li>The creek today: Alberta provincial base mapping, downloaded in 2015. Valley Line LRT: the route as proposed in 2015.</li>
+      <li>The mill and the freeway fight: <a href="https://en.wikipedia.org/wiki/Mill_Creek_Ravine" target="_blank" rel="noopener">Mill Creek Ravine, Wikipedia</a>.</li>
+      <li>The 1970 diversion and the 2015 LRT debate: <a href="https://andrewleach.ca/uncategorized/the-mill-creek-and-the-valley-line-an-opportunity-we-shouldnt-pass-up/" target="_blank" rel="noopener">Andrew Leach, March 2015</a>.</li>
+      <li>Daylighting since 2015 and the 76 Avenue culvert: <a href="https://edmonton.taproot.news/pulse/2025/01/23" target="_blank" rel="noopener">Taproot Edmonton, January 2025</a>; <a href="https://www.ctvnews.ca/edmonton/article/city-hall-committee-recommends-mill-creek-bridge-replacements-daylighting-creek/" target="_blank" rel="noopener">CTV News, August 2025</a>.</li>
+      <li>Valley Line Southeast opening: <a href="https://en.wikipedia.org/wiki/Muttart_stop" target="_blank" rel="noopener">Muttart stop, Wikipedia</a>.</li>
+    </ol>
+  </section>
+
+  <footer>Map by Matt Dance. First made March 2015, rebuilt October 2026. Data and code: <a href="https://github.com/mattdance/Mill-Creek-Map">github.com/mattdance/Mill-Creek-Map</a></footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var BOUNDS = [[53.51464273620646, -113.4882193836562], [53.54039372971754, -113.4662444569258]];
+  var STOPS = {
+    mouth: { c: [53.5389, -113.4790], z: 17 },
+    gap:   { c: [53.5345, -113.4808], z: 16.5 },
+    lrt:   { c: [53.5374, -113.4785], z: 17 }
+  };
+  function tok(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+  var START = [[53.5265, -113.4882], [53.5404, -113.4700]];
+  var map = L.map("map", { zoomSnap: 0.5, minZoom: 13, maxZoom: 19, scrollWheelZoom: false, tap: false, zoomControl: false });
+  L.control.zoom({ position: "bottomleft" }).addTo(map);
+  map.fitBounds(START);
+
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  map.createPane("then");
+  var thenPane = map.getPane("then");
+  thenPane.style.zIndex = 350;
+  L.imageOverlay("web/mill-creek-1967.jpg", BOUNDS, {
+    pane: "then", alt: "1967 Edmonton street map showing Mill Creek"
+  }).addTo(map);
+
+  var layers = {};
+  function styles() {
+    return {
+      then:  { color: tok("--map-then"), weight: 3.5, dashArray: "7 6", opacity: .95 },
+      today: { color: tok("--map-creek"), weight: 4.5, opacity: .95 },
+      lrtCase: { color: "#ffffff", weight: 7, opacity: .9 },
+      lrt:   { color: tok("--map-lrt"), weight: 3.5, opacity: 1 }
+    };
+  }
+  function load(url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error(url); return r.json(); }); }
+  Promise.all([load("web/creek-1967.geojson"), load("web/creek-today.geojson"), load("web/lrt-2015.geojson")])
+    .then(function (d) {
+      var s = styles();
+      layers.then = L.geoJSON(d[0], { style: s.then, interactive: false }).addTo(map);
+      layers.today = L.geoJSON(d[1], { style: s.today, interactive: false }).addTo(map);
+      layers.lrt = L.layerGroup([
+        L.geoJSON(d[2], { style: s.lrtCase, interactive: false }),
+        L.geoJSON(d[2], { style: s.lrt, interactive: false })
+      ]).addTo(map);
+      layers.then.bringToFront();
+    })
+    .catch(function () {
+      document.querySelector(".caption").textContent = "The creek and LRT lines didn't load, so you're seeing the two maps only. Reload the page to try again.";
+    });
+
+  function restyle() {
+    if (!layers.then) return;
+    var s = styles();
+    layers.then.setStyle(s.then);
+    layers.today.setStyle(s.today);
+    var g = layers.lrt.getLayers();
+    g[0].setStyle(s.lrtCase); g[1].setStyle(s.lrt);
+  }
+  try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", restyle); } catch (e) {}
+
+  document.querySelectorAll(".chip[data-k]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var k = b.getAttribute("data-k"), lyr = layers[k];
+      if (!lyr) return;
+      var on = !map.hasLayer(lyr);
+      if (on) { lyr.addTo(map); if (k !== "then" && layers.then && map.hasLayer(layers.then)) layers.then.bringToFront(); }
+      else map.removeLayer(lyr);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  });
+
+  /* swipe: clip the 1967 pane to the left of the divider */
+  var ratio = 0.5;
+  var line = document.getElementById("swipe-line"), knob = document.getElementById("swipe-knob");
+  var box = document.querySelector(".mapbox");
+  function clip() {
+    var size = map.getSize();
+    var nw = map.containerPointToLayerPoint([0, 0]);
+    var se = map.containerPointToLayerPoint(size);
+    var x = nw.x + size.x * ratio;
+    thenPane.style.clip = "rect(" + nw.y + "px," + x + "px," + se.y + "px," + nw.x + "px)";
+    line.style.left = knob.style.left = (ratio * 100) + "%";
+    knob.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
+  }
+  map.on("move zoom resize zoomend moveend viewreset", clip);
+  clip();
+
+  var dragging = false;
+  function setFromX(clientX) {
+    var r = box.getBoundingClientRect();
+    ratio = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    clip();
+  }
+  knob.addEventListener("pointerdown", function (e) {
+    dragging = true; map.dragging.disable();
+    try { knob.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault(); e.stopPropagation();
+  });
+  knob.addEventListener("pointermove", function (e) { if (dragging) setFromX(e.clientX); });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (t) {
+    knob.addEventListener(t, function () { if (dragging) { dragging = false; map.dragging.enable(); } });
+  });
+  knob.addEventListener("keydown", function (e) {
+    var step = { ArrowLeft: -0.05, ArrowDown: -0.05, ArrowRight: 0.05, ArrowUp: 0.05 }[e.key];
+    if (step) { ratio = Math.max(0, Math.min(1, ratio + step)); clip(); e.preventDefault(); }
+    else if (e.key === "Home") { ratio = 0; clip(); e.preventDefault(); }
+    else if (e.key === "End") { ratio = 1; clip(); e.preventDefault(); }
+  });
+  L.DomEvent.disableClickPropagation(knob);
+
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll(".go[data-go]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var s = STOPS[b.getAttribute("data-go")];
+      box.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      if (reduce) map.setView(s.c, s.z); else map.flyTo(s.c, s.z, { duration: 1.2 });
+    });
+  });
+})();
+</script>
+</body>
+</html>
